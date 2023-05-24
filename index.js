@@ -1,69 +1,58 @@
-const request = require("request");
-const path = require("path")
-const fs = require("fs")
-const iconv = require("iconv-lite")
-const AdmZip = require("adm-zip")
+import fs from 'node:fs';
+import fetch from "node-fetch";
+import AdmZip from "adm-zip";
+import iconv from 'iconv-lite';
+import stream from "stream/promises";
 
 
+const dataHandler = function () {
+    const buf = new AdmZip('./archive.zip', {}).getEntries()[0].getData()
+    const zip = iconv.decode(buf, "Windows-1251").toString()
 
-function getBic(x){
-    if (/BIC="[0-9]{9}"/.exec(x)[0]){
+    //--------- РџРђР РЎРРќР“ Р”РђРќРќР«РҐ --------------
+
+    const getBic = (x) => {
         return /BIC="[0-9]{9}"/.exec(x)[0].substring(5, 14)
     }
-    return []
-}
-function getNameP(x){
-    if (/NameP=".*?="/.exec(x)){
+
+    const getName = (x) => {
         const a = /NameP=".*?="/.exec(x)
         a[0] = a[0].slice(0,-1).split('\"')
         a[0].pop()
         a[0] = a[0].join('')
         return a[0].substring(6, a[0].length)
-
     }
-    return []
-}
-function getAccounts(x){
-    const arr = x.split("Account=")
-    arr.shift()
-    const newArr = [];
-    arr.forEach((x) => newArr.push(x.substring(1, 21)))
-    return newArr
-}
 
-function parseBic() {
-    request
-        .get("http://www.cbr.ru/s/newbik")
-        .on('error', function(err) {
-            console.error(err)
-        })
-        .pipe(fs.createWriteStream("archive.zip"))
-    const archPath= path.resolve(__dirname, "archive.zip")
+    const getAccounts = (x) => {
+        const arr = x.split("Account=")
+        arr.shift()
+        const newArr = [];
+        arr.forEach((x) => newArr.push(x.substring(1, 21)))
+        return newArr
+    }
 
-    let zip = new AdmZip(archPath)
-    let textXml = zip.getEntries()[0].getData().toString();
-    textXml = iconv.decode(textXml, "Windows-1251")
+    //--------- РЎР‘РћР  Р”РђРќРќР«РҐ --------------
 
-    const textArr = textXml.split("</BICDirectoryEntry>");
+    const textArr = zip.split("</BICDirectoryEntry>");
     textArr.pop()
-    const stringsArr = [];
-    textArr.forEach((x) => {stringsArr.push([getBic(x), getNameP(x), getAccounts(x)])})
     const resultArr = []
-    for (let bank of stringsArr) {
-        for (let accounts of bank[2]){
-            if (accounts === []) {
-                continue
-            }
-            resultArr.push({bic: bank[0], name: bank[1], corrAccount: accounts})
+    for (let bank of textArr) {
+        const data = [getBic(bank), getName(bank), getAccounts(bank)]
+        if (data[2].length !== 0) {
+            resultArr.push(data)
         }
     }
     return resultArr
 }
 
-console.log(parseBic())
-/*К великому сожалению сделать все красиво через fetch я не успел, а так же почему то у меня вместо кириллицы одни
- буквы "э" не знаю с чем это связано возможно моя локальная проблема, но вроде с кодировкой все нормально. Так же
- хотелось бы сказать, что задание не совсем ясное, в силу того, что "NPM пакеты с которыми мы одобряем для использования
-" эта фраза подразумевает не более чем использование тре приведенных пакетов, что отрзает возможность нормально
-парсить xml и тд (или я что-то упустил). Я схитрил и использовал request тк иначе архивы безбожно ломались
-и не хотели открываться. Хорошего дня!*/
+const getArch = function () {
+    return (async () => {
+        const data  = await fetch("https://www.cbr.ru/s/newbik").then(res => res.body)
+        await stream.pipeline(data,fs.createWriteStream('./archive.zip')).catch(console.error);
+        return dataHandler()
+    })()
+}
+
+getArch().then(res => console.log(res))
+/* Р—РґСЂР°РІСЃС‚РІСѓР№С‚Рµ! РџСЂРµРґСЃС‚Р°РІР»СЏСЋ РІС‚РѕСЂСѓСЋ РІРµСЂСЃРёСЋ С‚РµСЃС‚РѕРІРѕРіРѕ Р·Р°РґР°РЅРёСЏ. РџРѕСЂРµС„Р°С‡РёР» РєРѕРґ,
+ СЂР°Р·РѕР±СЂР°Р»СЃСЏ СЃ РєРѕРґРёСЂРѕРІРєРѕР№, РёСЃРїРѕР»СЊР·РѕРІР°Р» РІСЃРµ РѕРґРѕР±СЂРµРЅРЅС‹Рµ РјРѕРґСѓР»Рё */
