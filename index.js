@@ -37,9 +37,12 @@ const dataHandler = function () {
     textArr.pop()
     const resultArr = []
     for (let bank of textArr) {
-        const data = [getBic(bank), getName(bank), getAccounts(bank)]
-        if (data[2].length !== 0) {
-            resultArr.push(data)
+        let accounts = getAccounts(bank);
+        if (accounts.length !== 0) {
+            for (let acc of accounts) {
+                resultArr.push([getBic(bank), getName(bank), acc])
+            }
+
         }
     }
     return resultArr
